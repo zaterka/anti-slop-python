@@ -141,47 +141,25 @@ The original plugin's optional Effect rule group has no Python counterpart
 yet; framework-specific policy belongs in a separate opt-in group you can add
 to a vendored copy.
 
-## What changed in the Python port
+## Design notes
 
-The port is 1:1 in rule count, but several JS/TS conventions were adapted —
-or dropped — because they do not transfer:
+The 15 ported rules map one-for-one onto the JS/TS original
+(`Any`/`object` stand in for TS `unknown`/`object`, `typing.cast` for `as`
+assertions, the `getattr` family for `Reflect.get`/`Reflect.apply`). A few
+port decisions that may surprise a Python reader:
 
-- **`unknown`/`any` → `Any` and `object`.** TS's `unknown` maps to Python's
-  `Any` (the unparsed-value marker). Python's `object` is the *top* type and
-  plays the role the JS rule assigns to TS `object`.
-- **`as` assertions → `typing.cast`.** Python's sanctioned "assertion" is
-  `typing.cast`, so the chained-casts, widen-then-assert, and safety-comment
-  rules all target it.
-- **The `cause` parameter exemption was dropped.** The JS rule exempts
-  `cause` because of the `new Error(msg, { cause })` convention. Python
-  exception chaining is `raise X from e` — there is no `cause` parameter
-  convention to honor, so an `Any`-typed `cause` is flagged like any other
+- **`object` is treated as an escape hatch.** In TypeScript the policed
+  `object` is a *narrow* type; in Python it is the top type. This port
+  assigns it the same "unparsed value" role as `Any` — that's why
+  `no-object-parameters` exists at all in a language where `object` is a
+  legitimate top type.
+- **The JS `cause` parameter exemption was dropped.** It honored the
+  `new Error(msg, { cause })` convention; Python exception chaining is
+  `raise X from e`, so an `Any`-typed `cause` is flagged like any other
   `Any` input.
-- **`typeof` → `isinstance`, with a wider carve-out.** In JS, `typeof` in
-  logic is a rare, strong smell; in Python, `isinstance` is everyday
-  machinery. Narrowing the caught exception
-  (`except ... as exc: isinstance(exc, ...)`) is the language's designed
-  error-narrowing mechanism and is exempt. An `isinstance` on a *different*
-  variable is still reported.
-- **`Reflect.get`/`Reflect.apply` → the dynamic attribute family.** JS only
-  saw `Reflect.get`/`Reflect.apply`; Python's equivalent is four builtins —
-  `getattr`, `hasattr`, `setattr`, `delattr` — and all of them with a
-  non-literal name are reported by `no-dynamic-getattr`.
-- **Dunder protocol exemption.** The official typing documentation prescribes
-  `other: object` for `__eq__` and friends, so `no-object-parameters` exempts
-  the comparison/containment dunders (`__init__` and other dunders are not
-  exempt).
 - **String annotations resolve.** Quoted forward references are treated like
   any annotation: `dict[str, "Any"]` and `-> "Any"` are caught, while
-  `dict[str, "User"]` remains a named, safe type.
-- **`no-shape-in-symbol-names` is opt-in.** "Shape" is TypeScript naming
-  vocabulary (`interface UserShape`); in Python the word collides with
-  `ndarray.shape`, `DataFrame.shape`, and friends. It stays available for
-  codebases that deliberately adopt "XShape" naming.
-- **`no-known-value-widening` targets explicit broad annotations.** Python
-  has no `satisfies`, so the rule flags explicit `Any`/`object` annotations
-  placed over syntactically concrete values (the clearest case) rather than
-  the TS "broad container" case.
+  `dict[str, "User"]` remains a safe named type.
 
 ## Violation examples
 
