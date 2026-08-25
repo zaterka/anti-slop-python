@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "anti-slop-python"
+version = "0.1.0"
+description = "Opinionated AST rules that reject low-evidence and low-signal Python patterns."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["lint", "linter", "ast", "code-quality", "ai-slop", "static-analysis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
+# anti-slop is intentionally dependency-free: it runs on the standard library only.
+dependencies = []
+
+[project.scripts]
+anti-slop = "anti_slop.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/pedro.zaterka/anti-slop-python"
+
+[tool.hatch.build.targets.wheel]
+packages = ["anti_slop"]
+
+[tool.hatch.build.targets.sdist]
+include = ["anti_slop", "tests", "README.md", "LICENSE", "AGENTS.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
