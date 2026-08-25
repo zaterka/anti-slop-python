@@ -180,9 +180,10 @@ def iter_scope_nodes(statements: Iterable[ast.stmt]) -> Iterable[ast.AST]:
 
     Unlike :func:`iter_scope_statements`, this walks into expressions as well
     (so call nodes inside assignments, returns, and subscripts are found),
-    while still stopping at nested function/class bodies.
+    while still stopping at nested function/class bodies. Each node is yielded
+    exactly once: the walk starts at each top-level statement of the body.
     """
-    for statement in iter_scope_statements(statements):
+    for statement in statements:
         yield from _walk_nodes(statement)
 
 

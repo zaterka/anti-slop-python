@@ -95,8 +95,7 @@ def enclosing_type_params(parents: dict[ast.AST, ast.AST], node: ast.AST) -> set
 
 
 def _in_body_list(parent: ast.AST, node: ast.AST) -> bool:
-    for field in ast.iter_fields(parent):
-        value = getattr(parent, field[0])
+    for _field_name, value in ast.iter_fields(parent):
         if isinstance(value, list) and node in value:
             return True
     return False

@@ -86,5 +86,16 @@ def test_no_widen_then_assert() -> None:
                 ),
                 "count": 1,
             },
+            # A cast nested in control flow is reported exactly once.
+            {
+                "code": (
+                    "from typing import Any, cast\n"
+                    "source = {'id': 'second'}\n"
+                    "widened: Any = source\n"
+                    "if True:\n"
+                    "    parsed = cast(dict, widened)"
+                ),
+                "count": 1,
+            },
         ],
     )

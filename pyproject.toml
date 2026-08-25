@@ -40,3 +40,21 @@ include = ["anti_slop", "tests", "README.md", "LICENSE", "AGENTS.md"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+# This repository lints itself with its own ruleset. The two disabled rules
+# are the ones whose very purpose conflicts with being a linter:
+#
+# - no-runtime-isinstance: this codebase's core mechanism *is* AST node-type
+#   dispatch (isinstance against ast.* classes). The rule targets narrowing
+#   untyped runtime values, which never occurs here: every ast node is a
+#   concrete, statically known class.
+#
+# - no-shape-in-symbol-names: the rule's own module, class name, registry
+#   entry, and test are named after the word it polices.
+[tool.anti-slop]
+
+[tool.anti-slop.rules."anti-slop/no-runtime-isinstance"]
+enabled = false
+
+[tool.anti-slop.rules."anti-slop/no-shape-in-symbol-names"]
+enabled = false

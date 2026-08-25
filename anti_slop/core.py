@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Iterator
 
 __all__ = ["FileContext", "Violation", "Rule"]
 
@@ -26,7 +26,7 @@ class FileContext:
     path: str
     source: str
     tree: ast.Module
-    options: dict[str, Any]
+    options: dict[str, bool]  # every bundled rule option is boolean
 
 
 @dataclass
@@ -63,9 +63,9 @@ class Rule:
     name: str = ""
     description: str = ""
     messages: dict[str, str] = {}
-    default_options: dict[str, Any] = {}
+    default_options: dict[str, bool] = {}  # widen if a non-boolean option is added
 
-    def report(self, ctx: FileContext, node: ast.AST, key: str, **data: Any) -> Violation:
+    def report(self, ctx: FileContext, node: ast.AST, key: str, **data: str) -> Violation:
         """Build a :class:`Violation` for ``node`` using the ``messages[key]`` template."""
         template = self.messages.get(key, key)
         try:

@@ -124,5 +124,15 @@ def test_no_known_value_widening() -> None:
                 ),
                 "count": 1,
             },
+            # A return nested in control flow is reported exactly once.
+            {
+                "code": (
+                    "from typing import Any\n"
+                    "def f(flag) -> Any:\n"
+                    "    if flag:\n"
+                    "        return 42"
+                ),
+                "count": 1,
+            },
         ],
     )

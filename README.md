@@ -249,6 +249,20 @@ Add a specific justification immediately before a necessary cast:
 user_id = cast(UserId, value)
 ```
 
+## Self-lint
+
+This repository lints itself with its own ruleset:
+
+```bash
+.venv/bin/python -m anti_slop anti_slop tests skills
+```
+
+Two rules are disabled for this repo in `pyproject.toml`, each with a
+documented justification: `no-runtime-isinstance` (this codebase's core
+mechanism *is* `isinstance` dispatch over concrete `ast.*` node classes) and
+`no-shape-in-symbol-names` (the rule's own module, class, registry entry, and
+test are named after the word it polices).
+
 ## Development
 
 ```bash
