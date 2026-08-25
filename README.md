@@ -2,17 +2,37 @@
 
 Opinionated AST rules that reject low-evidence and low-signal Python patterns.
 
-This is the Python counterpart to
-[dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop)
-(TypeScript/JavaScript on Oxlint). Like the original, it is meant to be
-**vendored, not treated as a fixed dependency**: copy the `anti_slop/` package
-into your repository, read the rules, and change them to match your team's
-standards. The bundled agent skill handles the initial copy and configuration;
-after that, the vendored files are yours to maintain and make your own.
+A Python port of [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop)
+(TypeScript/JavaScript on Oxlint), built on Python's standard `ast` module.
+The entire tool runs on the Python standard library — no runtime
+dependencies.
 
-The entire tool runs on the Python standard library — no runtime dependencies.
+## Install
 
-## Install with an agent skill
+The normal way to use anti-slop is as an installed package:
+
+```bash
+pip install "git+https://github.com/pedro.zaterka/anti-slop-python.git"
+```
+
+(from a local checkout, `pip install .` does the same.) The package installs
+the `anti-slop` console script and the `anti_slop` module — and, once
+published, the same commands work with `pip install anti-slop-python`:
+
+```bash
+anti-slop .              # lint the current directory
+anti-slop src/ tests/    # lint specific paths
+anti-slop --json . > findings.json
+```
+
+## Or vendor the rules
+
+The original anti-slop project is designed to be **vendored, not treated as a
+fixed dependency**: copy the rules into your repository, read them, and change
+them to match your team's standards. anti-slop-python supports that too — use
+it when you want the rules under your version control, editable in place.
+
+### With an agent skill
 
 ```bash
 npx skills add pedro.zaterka/anti-slop-python --skill install-anti-slop
@@ -28,32 +48,18 @@ To inspect available skills first:
 npx skills add pedro.zaterka/anti-slop-python --list
 ```
 
-## Manual local installation
+### Manually
 
-Copy `anti_slop/` into the target repository, for example at
-`tools/anti_slop/` (adjust the import path if you rename it), and make it
-importable — either add `tools/` to the Python path in your lint command or
-install it as a local editable package:
+Copy `anti_slop/` into the target repository (for example at
+`tools/anti_slop/`) and run it with that directory on the Python path:
 
 ```bash
-pip install -e ./tools/anti-slop-package   # if you keep the full package there
+PYTHONPATH=tools python -m anti_slop .
 ```
 
-Then run it:
+After the copy, the vendored files are yours to maintain and make your own.
 
-```bash
-anti-slop .              # lint the current directory
-anti-slop src/ tests/    # lint specific paths
-python -m anti_slop .    # if the console script is not installed
-```
-
-Or wire it into your existing checks as a plain command:
-
-```bash
-anti-slop --json . > findings.json
-```
-
-### Configuration
+## Configuration
 
 All rules are enabled by default. Configure per project in `pyproject.toml`:
 
@@ -80,7 +86,8 @@ relative to the walked directory. Caches and VCS directories
 
 ## Rules
 
-### Generic rules
+All 15 rules are enabled by default; list them with
+`anti-slop --list-rules`.
 
 - `no-any-parameters` — rejects explicit `Any` function inputs except the explicit `cause` convention.
 - `no-any-returns` — rejects function contracts that return `Any`, `Awaitable[Any]`, or a union containing `Any`.
@@ -98,29 +105,9 @@ relative to the walked directory. Caches and VCS directories
 - `no-widen-then-assert` — rejects local flows that widen known values and later cast them back.
 - `require-safety-comment-for-cast` — requires each `typing.cast` to document its checked invariant.
 
-### How the JS rules map to Python
-
-| anti-slop (JS/TS) | anti-slop-python |
-| --- | --- |
-| `no-unknown-parameters` | `no-any-parameters` |
-| `no-unknown-returns` | `no-any-returns` |
-| `no-unknown-type-aliases` | `no-any-aliases` |
-| `no-object-parameters` | `no-object-parameters` |
-| `no-unsafe-dictionary-type` | `no-unsafe-dict-type` |
-| `no-chained-type-assertions` | `no-chained-casts` |
-| `no-conditional-empty-object-spread` | `no-conditional-empty-dict-spread` |
-| `no-module-mocking` | `no-module-mocking` |
-| `no-runtime-typeof` | `no-runtime-isinstance` |
-| `no-reflect-get` | `no-dynamic-getattr` |
-| `no-reflect-apply` | `no-dynamic-dispatch` |
-| `no-shape-in-symbol-names` | `no-shape-in-symbol-names` |
-| `no-known-value-widening` | `no-known-value-widening` |
-| `no-widen-then-assert` | `no-widen-then-assert` |
-| `require-safety-comment-for-type-assertion` | `require-safety-comment-for-cast` |
-
-The JS plugin's optional Effect rule group has no Python counterpart yet;
-framework-specific policy belongs in a separate opt-in group you can add to
-your vendored copy.
+The original plugin's optional Effect rule group has no Python counterpart
+yet; framework-specific policy belongs in a separate opt-in group you can add
+to a vendored copy.
 
 ## Violation examples
 
@@ -213,7 +200,7 @@ value = getattr(operation, name)(arg)
 class UserShape: ...
 ```
 
-### `no-unknown-parameters` / `no-known-value-widening`
+### `no-known-value-widening`
 
 ```python
 handlers: dict[str, Handler] = {
