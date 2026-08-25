@@ -11,9 +11,11 @@ intentionally small::
     enabled = true
     allow_in_type_guards = true
 
-Every rule is enabled by default; configuration only disables rules or sets
-per-rule options. Option keys other than ``enabled`` are passed straight through
-to the rule in :attr:`FileContext.options`.
+Rules are enabled by default; opt-in rules (``Rule.default_enabled = False``)
+are the exception and must be explicitly enabled. Configuration disables rules,
+enables opt-in rules, or sets per-rule options. Option keys other than
+``enabled`` are passed straight through to the rule in
+:attr:`FileContext.options`.
 """
 
 from __future__ import annotations
@@ -41,11 +43,17 @@ class Config:
     rules: dict[str, dict] = field(default_factory=dict)
     source: Path | None = None
 
-    def is_enabled(self, rule_name: str) -> bool:
+    def is_enabled(self, rule_name: str, default: bool = True) -> bool:
+        """Whether a rule is active in this configuration.
+
+        ``default`` applies when the configuration does not mention the rule
+        (the engine passes each rule's ``Rule.default_enabled``; opt-in rules
+        are therefore inactive unless explicitly enabled).
+        """
         opts = self.rules.get(rule_name)
         if opts is None:
-            return True
-        return bool(opts.get("enabled", True))
+            return default
+        return bool(opts.get("enabled", default))
 
     def options_for(self, rule_name: str) -> dict:
         opts = self.rules.get(rule_name)

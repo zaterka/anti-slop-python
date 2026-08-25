@@ -15,6 +15,14 @@ def test_no_runtime_isinstance() -> None:
             "isinstance = my_check\n"
             "isinstance(x, str)",
             "x = my_isinstance(v, User)",
+            # Exception narrowing: the except clause already establishes the
+            # failure contract; isinstance on the caught exception is the
+            # language's designed narrowing mechanism.
+            "try:\n"
+            "    fetch()\n"
+            "except Exception as exc:\n"
+            "    if isinstance(exc, TimeoutError):\n"
+            "        retry()\n",
         ],
         invalid=[
             {
@@ -38,6 +46,18 @@ def test_no_runtime_isinstance() -> None:
             },
             {
                 "code": "[i for i in x if isinstance(i, int)]",
+                "count": 1,
+            },
+            {
+                # Inside the handler but narrowing a *different* variable:
+                # still ad hoc value narrowing.
+                "code": (
+                    "try:\n"
+                    "    fetch()\n"
+                    "except Exception as exc:\n"
+                    "    if isinstance(value, list):\n"
+                    "        pass"
+                ),
                 "count": 1,
             },
         ],

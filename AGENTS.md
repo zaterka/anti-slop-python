@@ -7,4 +7,5 @@
 - Add focused RuleTester coverage (valid + invalid cases with exact counts) for semantic rule changes.
 - `anti_slop/rules/__init__.py` is the canonical rule registry; new rules must be added to `_RULE_FACTORIES` there.
 - Rule `name` attributes (`"anti-slop/<rule>"`) and message wording are stable contracts used by configuration; change them deliberately.
+- Rules are enabled by default. An opinionated rule that would fight a mainstream Python convention sets `default_enabled = False` (opt-in); the engine honors it via `Config.is_enabled`. Document the rationale in the rule module docstring and add a test asserting `default_enabled is False`.
 - Run `.venv/bin/python -m pytest` before committing.

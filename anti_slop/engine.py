@@ -72,7 +72,7 @@ def active_rules(config: Config) -> list[tuple[Rule, dict]]:
 
     result: list[tuple[Rule, dict]] = []
     for rule in rules_pkg.ALL_RULES:
-        if config.is_enabled(rule.name):
+        if config.is_enabled(rule.name, rule.default_enabled):
             result.append((rule, config.options_for(rule.name)))
     return result
 

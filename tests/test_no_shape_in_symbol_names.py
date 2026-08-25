@@ -5,6 +5,12 @@ from anti_slop.rules.no_shape_in_symbol_names import NoShapeInSymbolNamesRule
 from tests.harness import RuleTester
 
 
+def test_no_shape_in_symbol_names_is_opt_in() -> None:
+    # "shape" is TS naming vocabulary that collides with the numpy/pandas
+    # ``.shape`` attribute; the rule must not run unless explicitly enabled.
+    assert NoShapeInSymbolNamesRule.default_enabled is False
+
+
 def test_no_shape_in_symbol_names() -> None:
     RuleTester(NoShapeInSymbolNamesRule()).run(
         "anti-slop/no-shape-in-symbol-names",

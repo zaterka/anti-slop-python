@@ -67,6 +67,14 @@ def test_no_module_mocking() -> None:
                 "count": 1,
             },
             {
+                "code": "monkeypatch.setitem(d, 'key', value)",
+                "count": 1,
+            },
+            {
+                "code": "monkeypatch.delitem(d, 'key')",
+                "count": 1,
+            },
+            {
                 "code": 'from unittest.mock import patch\n'
                 '@patch("pkg.mod.attr")\n'
                 "def f(): pass",

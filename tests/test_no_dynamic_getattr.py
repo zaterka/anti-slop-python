@@ -11,6 +11,9 @@ def test_no_dynamic_getattr() -> None:
         valid=[
             'x = getattr(obj, "literal")',
             'x = getattr(obj, "field", default)',
+            'x = hasattr(obj, "literal")',
+            'setattr(obj, "literal", value)',
+            'delattr(obj, "literal")',
             # Locally shadowed.
             "def getattr(o, n):\n    return n\n"
             "x = getattr(o, dynamic)",
@@ -30,6 +33,19 @@ def test_no_dynamic_getattr() -> None:
             {
                 "code": "x = getattr(obj, field)\ny = getattr(other, field)",
                 "count": 2,
+            },
+            # The whole dynamic attribute family is covered.
+            {"code": "x = hasattr(obj, field)", "count": 1},
+            {"code": "setattr(obj, field, value)", "count": 1},
+            {"code": "delattr(obj, field)", "count": 1},
+            {
+                "code": (
+                    "x = getattr(obj, field)\n"
+                    "y = hasattr(obj, field)\n"
+                    "setattr(obj, field, value)\n"
+                    "delattr(obj, field)"
+                ),
+                "count": 4,
             },
         ],
     )

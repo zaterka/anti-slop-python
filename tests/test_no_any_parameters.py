@@ -18,9 +18,6 @@ def test_no_any_parameters() -> None:
             "def f(x: list[Any]) -> None:\n    pass",
             "from typing import Any, Optional\n"
             "def f(x: Optional[Any]) -> None:\n    pass",
-            # The cause exemption (parity with the JS rule).
-            "from typing import Any\n"
-            "def f(cause: Any) -> None:\n    pass",
             # PEP 695 type parameters.
             "def f[T](x: T) -> None:\n    pass",
             "from typing import Any\n"
@@ -84,6 +81,15 @@ def test_no_any_parameters() -> None:
                 "code": (
                     "from typing import Any\n"
                     "def f(cause: Any, x: Any) -> None:\n    pass"
+                ),
+                "count": 2,
+            },
+            # No `cause` exemption: Python exception chaining is `raise X from e`,
+            # not a `cause` parameter, so an `Any` cause is just unparsed input.
+            {
+                "code": (
+                    "from typing import Any\n"
+                    "def f(cause: Any) -> None:\n    pass"
                 ),
                 "count": 1,
             },

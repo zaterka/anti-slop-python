@@ -1,8 +1,10 @@
 """``no-any-parameters``: ban explicit ``Any`` on function inputs.
 
 Port of ``anti-slop/no-unknown-parameters``. Function inputs must use a named
-domain type; ``Any`` inputs mean the function accepts unparsed data. The only
-exemption is the explicit ``cause`` convention (parity with the JS rule).
+domain type; ``Any`` inputs mean the function accepts unparsed data. (The JS
+rule's ``cause`` exemption is not ported: Python exception chaining is
+``raise X from e``, not a ``cause`` parameter, so there is no convention to
+honor — an ``Any``-typed ``cause`` is just unparsed data in disguise.)
 """
 
 from __future__ import annotations
@@ -24,12 +26,12 @@ __all__ = ["NoAnyParametersRule"]
 
 
 class NoAnyParametersRule(Rule):
-    """Disallow explicit ``Any`` function parameters except ``cause``."""
+    """Disallow explicit ``Any`` function parameters."""
 
     name = "anti-slop/no-any-parameters"
     description = (
-        "Disallow explicitly Any function parameters except `cause`; decode "
-        "unknown input at its I/O boundary instead."
+        "Disallow explicitly Any function parameters; decode unknown input "
+        "at its I/O boundary instead."
     )
     messages = {
         "unknownParameter": (
@@ -51,8 +53,6 @@ class NoAnyParametersRule(Rule):
             type_params = frozenset(enclosing_type_params(parents, node))
             for argument in self._parameters(node):
                 if argument.annotation is None:
-                    continue
-                if argument.arg == "cause":
                     continue
                 if self._is_direct_any(argument.annotation, imports, assigned, type_params):
                     yield self.report(

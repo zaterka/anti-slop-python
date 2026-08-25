@@ -44,13 +44,23 @@ class NoConditionalEmptyDictSpreadRule(Rule):
 
     @staticmethod
     def _is_conditional_empty_spread(expression: ast.AST) -> bool:
-        """True for ``cond and d or {}`` / ``d if cond else {}`` with an empty-dict branch."""
-        if not isinstance(expression, ast.IfExp):
-            return False
-        return (
-            NoConditionalEmptyDictSpreadRule._is_empty_dict(expression.body)
-            or NoConditionalEmptyDictSpreadRule._is_empty_dict(expression.orelse)
-        )
+        """True for ``d if cond else {}``, ``cond and d or {}``, or ``d or {}``.
+
+        The ``and``/``or`` forms parse as ``BoolOp(Or)``: ``cond and d or {}``
+        is ``Or(And(cond, d), {})`` and ``d or {}`` is ``Or(d, {})`` — the
+        empty dict is the falsy fallback, i.e. the branch that omits the keys.
+        """
+        if isinstance(expression, ast.IfExp):
+            return (
+                NoConditionalEmptyDictSpreadRule._is_empty_dict(expression.body)
+                or NoConditionalEmptyDictSpreadRule._is_empty_dict(expression.orelse)
+            )
+        if isinstance(expression, ast.BoolOp) and isinstance(expression.op, ast.Or):
+            return any(
+                NoConditionalEmptyDictSpreadRule._is_empty_dict(operand)
+                for operand in expression.values
+            )
+        return False
 
     @staticmethod
     def _is_empty_dict(node: ast.AST) -> bool:

@@ -30,8 +30,9 @@ SOURCE_PACKAGE = Path(__file__).resolve().parents[3] / "anti_slop"
 _CONFIG_SECTION = """\
 
 [tool.anti-slop]
-# Every bundled rule is enabled by default. To disable or tune a rule, add a
-# table keyed by its full name, for example:
+# Rules are enabled by default; the two opt-in naming rules (no-shape-in-symbol-
+# names, no-numbered-symbol-names) are off until enabled here. To disable or
+# tune a rule, add a table keyed by its full name, for example:
 #
 # [tool.anti-slop.rules."anti-slop/no-runtime-isinstance"]
 # enabled = false

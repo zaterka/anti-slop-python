@@ -52,7 +52,8 @@ class Rule:
     """Base class for anti-slop rules.
 
     Subclasses set the class attributes :attr:`name`, :attr:`description`,
-    :attr:`messages` and :attr:`default_options`, and implement :meth:`check`.
+    :attr:`messages`, :attr:`default_options` and (for opt-in rules)
+    :attr:`default_enabled`, and implement :meth:`check`.
 
     ``name`` is the stable rule identifier used in configuration, e.g.
     ``"anti-slop/no-object-parameters"``. ``messages`` maps a short key to a
@@ -64,6 +65,9 @@ class Rule:
     description: str = ""
     messages: dict[str, str] = {}
     default_options: dict[str, bool] = {}  # widen if a non-boolean option is added
+    # Opt-in rules (``default_enabled = False``) are inactive unless the
+    # project configuration explicitly enables them.
+    default_enabled: bool = True
 
     def report(self, ctx: FileContext, node: ast.AST, key: str, **data: str) -> Violation:
         """Build a :class:`Violation` for ``node`` using the ``messages[key]`` template."""

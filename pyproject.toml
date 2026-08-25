@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anti-slop-python"
-version = "0.1.0"
+version = "0.2.0"
 description = "Opinionated AST rules that reject low-evidence and low-signal Python patterns."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,7 +16,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
@@ -41,20 +40,23 @@ include = ["anti_slop", "tests", "README.md", "LICENSE", "AGENTS.md"]
 testpaths = ["tests"]
 addopts = "-q"
 
-# This repository lints itself with its own ruleset. The two disabled rules
-# are the ones whose very purpose conflicts with being a linter:
+# This repository lints itself with its own ruleset. The disabled rules are
+# the ones whose very purpose conflicts with being a console linter:
 #
 # - no-runtime-isinstance: this codebase's core mechanism *is* AST node-type
 #   dispatch (isinstance against ast.* classes). The rule targets narrowing
 #   untyped runtime values, which never occurs here: every ast node is a
 #   concrete, statically known class.
 #
-# - no-shape-in-symbol-names: the rule's own module, class name, registry
-#   entry, and test are named after the word it polices.
+# - no-debug-prints: this project *is* a console tool; its output channel is
+#   stdout via print, in cli.py and the installer script.
+#
+# (no-shape-in-symbol-names and no-numbered-symbol-names need no entry: they
+# are opt-in rules, disabled by default for every project.)
 [tool.anti-slop]
 
 [tool.anti-slop.rules."anti-slop/no-runtime-isinstance"]
 enabled = false
 
-[tool.anti-slop.rules."anti-slop/no-shape-in-symbol-names"]
+[tool.anti-slop.rules."anti-slop/no-debug-prints"]
 enabled = false

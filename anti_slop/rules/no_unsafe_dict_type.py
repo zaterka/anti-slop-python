@@ -68,12 +68,14 @@ class NoUnsafeDictTypeRule(Rule):
         imports: dict[str, str],
         shadowed: frozenset[str],
     ) -> str | None:
-        """Classify the value type of a ``dict[K, V]`` annotation, if unsafe."""
+        """Classify the value type of a ``dict[K, V]`` annotation, if unsafe.
+
+        Quoted forward references are resolved like any annotation:
+        ``dict[str, "User"]`` is a named type (safe) while
+        ``dict[str, "Any"]`` is an escape hatch (unsafe).
+        """
         value = dict_value_annotation(node)
         if value is None:
-            return None
-        if isinstance(value, ast.Constant) and isinstance(value.value, str):
-            # Forward reference (`dict[str, "User"]`): a named type, not unsafe.
             return None
         broad = annotation_is_broad(value, aliases, imports, shadowed)
         if broad is not None:

@@ -1,7 +1,15 @@
 """``no-object-parameters``: ban the broad ``object`` type on function inputs.
 
 Port of ``anti-slop/no-object-parameters``. Inputs must use an owner-provided
-type and be parsed at their boundary, not the bottom of the type hierarchy.
+type and be parsed at their boundary, not the top of the type hierarchy
+(Python's ``object`` plays the role the JS rule assigns to TS ``object``).
+
+Protocol exemption: the comparison/containment dunders
+(``__eq__``, ``__ne__``, ``__lt__``, ``__le__``, ``__gt__``, ``__ge__``,
+``__contains__``) are exempt. The official typing documentation prescribes
+``other: object`` for these — ``def __eq__(self, other: object)`` is the
+documented way to make an object comparable to anything — so a broad type
+there is language protocol, not a missing domain contract.
 """
 
 from __future__ import annotations
@@ -20,6 +28,12 @@ from ..shared.type_utils import (
 )
 
 __all__ = ["NoObjectParametersRule"]
+
+# Comparison/containment dunders whose parameter type the language protocol
+# fixes to ``object`` (see the module docstring).
+_PROTOCOL_OBJECT_DUNDERS = frozenset(
+    {"__eq__", "__ne__", "__lt__", "__le__", "__gt__", "__ge__", "__contains__"}
+)
 
 
 class NoObjectParametersRule(Rule):
@@ -47,6 +61,8 @@ class NoObjectParametersRule(Rule):
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            if node.name in _PROTOCOL_OBJECT_DUNDERS:
+                continue  # protocol methods: object is the documented parameter type
             for argument in self._parameters(node):
                 if argument.annotation is None:
                     continue

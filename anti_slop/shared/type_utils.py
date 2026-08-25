@@ -35,6 +35,7 @@ __all__ = [
     "wrapper_value_args",
     "is_typing_cast",
     "is_known_evidence",
+    "is_mutable_display",
 ]
 
 # Names that refer to typing.Any regardless of how they are qualified.
@@ -53,7 +54,8 @@ SENSITIVE_SYMBOLS = frozenset(
 
 # For typing containers, which type-argument positions carry the *value* type.
 # ``Coroutine[X, Y, R]`` uses X (sent-from) and Y (send-type) as conventional
-# ``Any`` boilerplate, so only R is the value position.
+# ``Any`` boilerplate, so only R is the value position. Built-in generics
+# (``list``, ``set``, ...) carry their value type at position 0.
 WRAPPER_VALUE_POSITIONS: dict[str, tuple[int, ...]] = {
     "Awaitable": (0,),
     "typing.Awaitable": (0,),
@@ -75,9 +77,33 @@ WRAPPER_VALUE_POSITIONS: dict[str, tuple[int, ...]] = {
     "typing.Collection": (0,),
     "Iterator": (0,),
     "typing.Iterator": (0,),
+    "list": (0,),
+    "typing.List": (0,),
+    "set": (0,),
+    "typing.Set": (0,),
+    "frozenset": (0,),
+    "typing.FrozenSet": (0,),
 }
 
-_DICT_NAMES = {"dict", "typing.Dict"}
+# Containers with non-fixed value positions, handled specially by
+# :func:`wrapper_value_args`: every element of ``tuple[X, Y]`` (the trailing
+# Ellipsis of ``tuple[X, ...]`` is a repeat marker, not a value) and the last
+# argument of ``Callable[..., R]``.
+_TUPLE_NAMES = {"tuple", "typing.Tuple"}
+_CALLABLE_NAMES = {"Callable", "typing.Callable"}
+
+# Dictionary-family mappings: the dict display plus the stdlib/typing variants
+# that carry the same value contract.
+_DICT_NAMES = {
+    "dict",
+    "typing.Dict",
+    "defaultdict",
+    "collections.defaultdict",
+    "OrderedDict",
+    "collections.OrderedDict",
+    "DefaultDict",
+    "typing.DefaultDict",
+}
 _UNION_NAMES = {"Union", "typing.Union"}
 _OPTIONAL_NAMES = {"Optional", "typing.Optional"}
 
@@ -86,7 +112,10 @@ def dotted_name(node: ast.AST) -> str | None:
     """Return the dotted name for a ``Name``/``Attribute`` chain, else ``None``.
 
     ``foo.Bar.baz`` -> ``"foo.Bar.baz"``; ``foo.bar`` -> ``"foo.bar"``;
-    ``Bar`` -> ``"Bar"``. Subscripts and other expressions return ``None``.
+    ``Bar`` -> ``"Bar"``. A quoted forward reference is its own string:
+    ``"User"`` -> ``"User"`` — so rules that resolve names also resolve
+    string annotations instead of silently skipping them. Subscripts and
+    other expressions return ``None``.
     """
     if isinstance(node, ast.Name):
         return node.id
@@ -95,6 +124,8 @@ def dotted_name(node: ast.AST) -> str | None:
         if base is None:
             return None
         return f"{base}.{node.attr}"
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
     return None
 
 
@@ -370,24 +401,40 @@ def dict_value_annotation(node: ast.AST) -> ast.AST | None:
     return None
 
 
-def wrapper_value_args(node: ast.AST) -> list[ast.AST] | None:
-    """The *value-position* type arguments of a typing container annotation.
+def _slice_elements(node: ast.Subscript) -> list[ast.AST]:
+    """The type-argument nodes of a subscript (``X[a, b]`` -> ``[a, b]``)."""
+    slice_ = node.slice
+    if isinstance(slice_, ast.Tuple):
+        return list(slice_.elts)
+    return [slice_]
 
-    ``Awaitable[Any]`` -> ``[Any]``; ``Coroutine[Any, None, User]`` -> ``[User]``;
-    ``dict[str, Any]`` -> ``None`` (use :func:`dict_value_annotation`). Returns
-    ``None`` when the annotation is not a known value-carrying container.
+
+def wrapper_value_args(node: ast.AST) -> list[ast.AST] | None:
+    """The *value-position* type arguments of a value-carrying container.
+
+    ``Awaitable[Any]`` -> ``[Any]``; ``Coroutine[Any, None, User]`` ->
+    ``[User]``; ``list[Any]`` / ``set[Any]`` / ``tuple[Any, ...]`` -> the
+    element types; ``Callable[[], Any]`` -> ``[Any]``; ``dict[str, Any]`` ->
+    ``None`` (use :func:`dict_value_annotation`). Returns ``None`` when the
+    annotation is not a known value-carrying container.
     """
     if not isinstance(node, ast.Subscript):
         return None
     name = dotted_name(node.value)
-    if name is None or name not in WRAPPER_VALUE_POSITIONS:
+    if name is None:
+        return None
+    elts = _slice_elements(node)
+    if name in _TUPLE_NAMES:
+        return [
+            elt
+            for elt in elts
+            if not (isinstance(elt, ast.Constant) and elt.value is Ellipsis)
+        ]
+    if name in _CALLABLE_NAMES:
+        return [elts[-1]] if elts else None
+    if name not in WRAPPER_VALUE_POSITIONS:
         return None
     positions = WRAPPER_VALUE_POSITIONS[name]
-    slice_ = node.slice
-    if isinstance(slice_, ast.Tuple):
-        elts = list(slice_.elts)
-    else:
-        elts = [slice_]
     return [elts[i] for i in positions if i < len(elts)]
 
 
@@ -437,4 +484,22 @@ def is_known_evidence(node: ast.AST) -> bool:
             ast.ClassDef,
             ast.UnaryOp,
         ),
+    )
+
+
+def is_mutable_display(node: ast.AST) -> bool:
+    """A value that creates a mutable object shared across its uses.
+
+    A list/dict/set display, or a no-argument ``list()``/``dict()``/``set()``
+    call. Used by the mutable-default rules: such a value as a parameter or
+    dataclass field default is evaluated once and shared by every call/instance.
+    """
+    if isinstance(node, (ast.List, ast.Dict, ast.Set)):
+        return True
+    return (
+        isinstance(node, ast.Call)
+        and not node.args
+        and not node.keywords
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"list", "dict", "set"}
     )

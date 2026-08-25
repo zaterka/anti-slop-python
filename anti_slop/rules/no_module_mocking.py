@@ -71,7 +71,13 @@ class NoModuleMockingRule(Rule):
         # pytest-mock fixture: mocker.patch / .object / .dict / .multiple
         if name.startswith("mocker.") and name[len("mocker.") :] in _PATCH_METHODS:
             return "mocker" not in assigned
-        # pytest monkeypatch fixture: attribute replacement only (not setenv)
-        if name in {"monkeypatch.setattr", "monkeypatch.delattr"}:
+        # pytest monkeypatch fixture: attribute/dict-item replacement
+        # (setenv/chdir are environment helpers, not dependency seams)
+        if name in {
+            "monkeypatch.setattr",
+            "monkeypatch.delattr",
+            "monkeypatch.setitem",
+            "monkeypatch.delitem",
+        }:
             return "monkeypatch" not in assigned
         return False

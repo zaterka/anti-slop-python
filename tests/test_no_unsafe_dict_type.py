@@ -91,5 +91,39 @@ def test_no_unsafe_dict_type() -> None:
                 ),
                 "count": 2,
             },
+            # A quoted forward reference to Any is still an escape hatch.
+            {
+                "code": 'from typing import Any\ntype M = dict[str, "Any"]',
+                "count": 1,
+            },
+            {
+                "code": 'from typing import Any\n'
+                'def f(x: dict[str, "Any"]) -> None:\n    pass',
+                "count": 1,
+            },
+            # The stdlib/typing dict family carries the same value contract.
+            {
+                "code": (
+                    "from collections import defaultdict\n"
+                    "from typing import Any\n"
+                    "type M = defaultdict[str, Any]"
+                ),
+                "count": 1,
+            },
+            {
+                "code": (
+                    "from collections import OrderedDict\n"
+                    "from typing import Any\n"
+                    "def f(x: OrderedDict[str, Any]) -> None:\n    pass"
+                ),
+                "count": 1,
+            },
+            {
+                "code": (
+                    "from typing import Any, DefaultDict\n"
+                    "type M = DefaultDict[str, Any]"
+                ),
+                "count": 1,
+            },
         ],
     )

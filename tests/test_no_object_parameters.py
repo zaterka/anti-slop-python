@@ -26,6 +26,29 @@ def test_no_object_parameters() -> None:
             # parameter (no-unsafe-dict-type covers dict value types).
             "def f(**kwargs: dict[str, object]) -> None:\n    pass",
             "def f(value: int) -> None:\n    pass",
+            # Protocol dunders: object is the documented parameter type
+            # (official typing docs recommend __eq__(self, other: object)).
+            "class User:\n"
+            "    def __eq__(self, other: object) -> bool:\n"
+            "        return False",
+            "class User:\n"
+            "    def __ne__(self, other: object) -> bool:\n"
+            "        return True",
+            "class User:\n"
+            "    def __lt__(self, other: object) -> bool:\n"
+            "        return False",
+            "class User:\n"
+            "    def __le__(self, other: object) -> bool:\n"
+            "        return False",
+            "class User:\n"
+            "    def __gt__(self, other: object) -> bool:\n"
+            "        return False",
+            "class User:\n"
+            "    def __ge__(self, other: object) -> bool:\n"
+            "        return False",
+            "class User:\n"
+            "    def __contains__(self, item: object) -> bool:\n"
+            "        return False",
         ],
         invalid=[
             {
@@ -80,6 +103,24 @@ def test_no_object_parameters() -> None:
                     "    pass"
                 ),
                 "count": 2,
+            },
+            # Non-protocol dunders are not exempt: a constructor taking
+            # object is still a missing domain contract.
+            {
+                "code": (
+                    "class User:\n"
+                    "    def __init__(self, value: object) -> None:\n"
+                    "        pass"
+                ),
+                "count": 1,
+            },
+            {
+                "code": (
+                    "class User:\n"
+                    "    def __getitem__(self, key: object):\n"
+                    "        pass"
+                ),
+                "count": 1,
             },
         ],
     )

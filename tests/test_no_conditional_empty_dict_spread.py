@@ -17,6 +17,9 @@ def test_no_conditional_empty_dict_spread() -> None:
             "options = {**(a if c else b)}",
             "x = {**d, 'k': 1}",
             "def f(d) -> dict:\n    return {**d}",
+            # and/or conditionals with no empty-dict branch.
+            "options = {**(a and b)}",
+            "options = {**(a or b)}",
             # An empty dict literal by itself is fine.
             "x = {}",
         ],
@@ -42,6 +45,17 @@ def test_no_conditional_empty_dict_spread() -> None:
             },
             {
                 "code": "def f() -> dict:\n    return {**(opts if opts else {})}",
+                "count": 1,
+            },
+            # The documented `cond and d or {}` form: the empty dict is the
+            # falsy fallback that omits the keys.
+            {
+                "code": "options = {**(timeout and {'timeout': timeout} or {})}",
+                "count": 1,
+            },
+            # `d or {}`: falsy fallback to an empty dict.
+            {
+                "code": "options = {**(extra or {})}",
                 "count": 1,
             },
         ],

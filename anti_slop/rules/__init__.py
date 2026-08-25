@@ -112,6 +112,72 @@ def _factory_require_safety_comment_for_cast() -> "type[Rule]":
     return RequireSafetyCommentForCastRule
 
 
+def _factory_no_swallowed_exceptions() -> "type[Rule]":
+    from .no_swallowed_exceptions import NoSwallowedExceptionsRule
+
+    return NoSwallowedExceptionsRule
+
+
+def _factory_no_debug_prints() -> "type[Rule]":
+    from .no_debug_prints import NoDebugPrintsRule
+
+    return NoDebugPrintsRule
+
+
+def _factory_no_fstring_logging() -> "type[Rule]":
+    from .no_fstring_logging import NoFstringLoggingRule
+
+    return NoFstringLoggingRule
+
+
+def _factory_no_mutable_defaults() -> "type[Rule]":
+    from .no_mutable_defaults import NoMutableDefaultsRule
+
+    return NoMutableDefaultsRule
+
+
+def _factory_no_eval_exec() -> "type[Rule]":
+    from .no_eval_exec import NoEvalExecRule
+
+    return NoEvalExecRule
+
+
+def _factory_no_utcnow() -> "type[Rule]":
+    from .no_utcnow import NoUtcnowRule
+
+    return NoUtcnowRule
+
+
+def _factory_no_trivial_asserts() -> "type[Rule]":
+    from .no_trivial_asserts import NoTrivialAssertsRule
+
+    return NoTrivialAssertsRule
+
+
+def _factory_no_async_without_await() -> "type[Rule]":
+    from .no_async_without_await import NoAsyncWithoutAwaitRule
+
+    return NoAsyncWithoutAwaitRule
+
+
+def _factory_no_blocking_sleep_in_async() -> "type[Rule]":
+    from .no_blocking_sleep_in_async import NoBlockingSleepInAsyncRule
+
+    return NoBlockingSleepInAsyncRule
+
+
+def _factory_no_dataclass_mutable_defaults() -> "type[Rule]":
+    from .no_dataclass_mutable_defaults import NoDataclassMutableDefaultsRule
+
+    return NoDataclassMutableDefaultsRule
+
+
+def _factory_no_numbered_symbol_names() -> "type[Rule]":
+    from .no_numbered_symbol_names import NoNumberedSymbolNamesRule
+
+    return NoNumberedSymbolNamesRule
+
+
 _RULE_FACTORIES: tuple[Callable[[], "type[Rule]"], ...] = (
     _factory_no_any_parameters,
     _factory_no_any_returns,
@@ -128,6 +194,18 @@ _RULE_FACTORIES: tuple[Callable[[], "type[Rule]"], ...] = (
     _factory_no_known_value_widening,
     _factory_no_widen_then_assert,
     _factory_require_safety_comment_for_cast,
+    # Python-specific rules (no JS/TS counterpart).
+    _factory_no_swallowed_exceptions,
+    _factory_no_debug_prints,
+    _factory_no_fstring_logging,
+    _factory_no_mutable_defaults,
+    _factory_no_eval_exec,
+    _factory_no_utcnow,
+    _factory_no_trivial_asserts,
+    _factory_no_async_without_await,
+    _factory_no_blocking_sleep_in_async,
+    _factory_no_dataclass_mutable_defaults,
+    _factory_no_numbered_symbol_names,
 )
 
 _CACHE_RULES: list[Rule] | None = None
