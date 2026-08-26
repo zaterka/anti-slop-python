@@ -72,10 +72,18 @@ runs:
         INPUT_IGNORE_RULE: ${{ inputs.ignore-rule }}
         INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
       run: |
+        # GitHub runs `shell: bash` as `bash --noprofile --norc -eo pipefail`,
+        # so errexit is already on and the linter's exit 1 would abort this
+        # step before the exit code could be inspected. Findings are an
+        # expected outcome here, not a script failure: turn errexit off and
+        # handle every status explicitly at the end.
+        set +e
         set -uo pipefail
 
         args=(--format github)
-        [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
+        if [ -n "$INPUT_CONFIG" ]; then
+          args+=(--config "$INPUT_CONFIG")
+        fi
 
         # Rule lists accept commas or spaces; normalize to one flag per rule.
         for rule in ${INPUT_SELECT//,/ }; do args+=(--select "$rule"); done

@@ -68,3 +68,24 @@ jobs:
         run: |
           test "${{ steps.advisory.outputs.exit-code }}" -eq 1
           test "${{ steps.advisory.outputs.findings }}" -gt 0
+
+      - name: Findings block the job by default
+        id: blocking
+        continue-on-error: true
+        uses: ./
+        with:
+          paths: tests/fixtures/sloppy_sample.py
+
+      - name: The default really did fail
+        run: test "${{ steps.blocking.outcome }}" = "failure"
+
+      - name: A clean tree passes
+        id: clean
+        uses: ./
+        with:
+          paths: anti_slop
+
+      - name: No findings reported for clean code
+        run: |
+          test "${{ steps.clean.outputs.exit-code }}" -eq 0
+          test "${{ steps.clean.outputs.findings }}" -eq 0
