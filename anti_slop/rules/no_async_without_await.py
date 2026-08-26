@@ -6,7 +6,10 @@ nothing — it cannot yield to the loop, it just runs synchronously and hands
 back a future. Make it a plain function.
 
 An async *generator* contains no ``await`` by definition, so a body that
-yields (making the function an async generator) is exempt.
+yields (making the function an async generator) is exempt. ``async with`` and
+``async for`` are async work in their own right — they drive ``__aenter__`` /
+``__anext__`` on the event loop without producing an ``Await`` node — so a
+body containing either is exempt too.
 
 Known false positive: a synchronous implementation of an async protocol
 (``async def`` required by the interface, no ``await`` in the body) is
@@ -53,12 +56,29 @@ class NoAsyncWithoutAwaitRule(Rule):
 
     @staticmethod
     def _has_async_work(body: list[ast.stmt]) -> bool:
-        """True when the scope awaits, or yields (making it an async generator).
+        """True when the scope does async work.
+
+        That is: it awaits, it yields (making it an async generator), or it
+        drives an async context manager / iterator (``async with``, ``async
+        for``) — neither of which produces an ``Await`` node even though both
+        suspend on the event loop.
 
         Walks expressions but stops at nested functions/classes, whose
         coroutines are their own.
         """
         for node in iter_scope_nodes(body):
-            if isinstance(node, (ast.Await, ast.Yield, ast.YieldFrom)):
+            if isinstance(
+                node,
+                (
+                    ast.Await,
+                    ast.Yield,
+                    ast.YieldFrom,
+                    ast.AsyncWith,
+                    ast.AsyncFor,
+                ),
+            ):
+                return True
+            # ``[x async for x in stream]`` suspends without an Await node.
+            if isinstance(node, ast.comprehension) and node.is_async:
                 return True
         return False

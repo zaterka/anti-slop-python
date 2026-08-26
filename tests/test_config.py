@@ -55,7 +55,7 @@ def test_explicit_enable_overrides_opt_in_default() -> None:
 
 def test_opt_in_rules_are_off_by_default() -> None:
     config = Config()
-    active = {rule.name for rule, _ in active_rules(config)}
+    active = {entry.rule.name for entry in active_rules(config)}
     for rule in ALL_RULES:
         if rule.default_enabled:
             assert rule.name in active
@@ -67,7 +67,7 @@ def test_opt_in_rule_can_be_turned_on() -> None:
     config = Config(
         rules={"anti-slop/no-numbered-symbol-names": {"enabled": True}}
     )
-    active = {rule.name for rule, _ in active_rules(config)}
+    active = {entry.rule.name for entry in active_rules(config)}
     assert "anti-slop/no-numbered-symbol-names" in active
 
 

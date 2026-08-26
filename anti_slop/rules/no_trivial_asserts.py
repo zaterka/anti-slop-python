@@ -10,6 +10,10 @@ Covers plain ``assert`` statements and the unittest family:
 ``assertTrue(True)``, ``assertFalse(False)``, ``assertIsNone(None)``,
 ``assertIsNotNone(None)``, and ``assertEqual(a, a)`` with structurally
 identical operands.
+
+Also covers the parenthesized-assert typo, ``assert (cond, "message")``: the
+test is a non-empty tuple, which is always truthy, so the assertion passes no
+matter what ``cond`` is. The fix is ``assert cond, "message"``.
 """
 
 from __future__ import annotations
@@ -47,17 +51,33 @@ class NoTrivialAssertsRule(Rule):
             "This assertion can never fail; it checks nothing. Assert on the "
             "value the code computes."
         ),
+        "tupleAssert": (
+            "This asserts a non-empty tuple, which is always truthy, so the "
+            'check never runs. Drop the parentheses: `assert cond, "message"`.'
+        ),
     }
 
     def check(self, ctx: FileContext):
         for node in ast.walk(ctx.tree):
-            if isinstance(node, ast.Assert) and self._trivial_test(node.test):
-                yield self.report(ctx, node, "trivialAssert")
+            if isinstance(node, ast.Assert):
+                if self._is_truthy_tuple(node.test):
+                    yield self.report(ctx, node, "tupleAssert")
+                elif self._trivial_test(node.test):
+                    yield self.report(ctx, node, "trivialAssert")
             elif isinstance(node, ast.Call) and isinstance(
                 node.func, ast.Attribute
             ):
                 if self._trivial_selftest(node):
                     yield self.report(ctx, node, "trivialAssert")
+
+    @staticmethod
+    def _is_truthy_tuple(test: ast.expr) -> bool:
+        """True for ``assert (cond, "message")`` — a non-empty tuple is truthy.
+
+        An empty ``assert ()`` is excluded: it always *fails*, which is a
+        different mistake and not one this rule claims.
+        """
+        return isinstance(test, ast.Tuple) and bool(test.elts)
 
     @staticmethod
     def _trivial_test(test: ast.expr) -> bool:

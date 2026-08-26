@@ -7,7 +7,7 @@ description: Install anti-slop-python into the current repository. Copies the an
 
 anti-slop is a zero-dependency, AST-based linter for Python that enforces
 concrete typing contracts. Installing it as a package
-(`pip install "git+https://github.com/pedro.zaterka/anti-slop-python.git"`)
+(`pip install "git+https://github.com/zaterka/anti-slop-python.git"`)
 is the default way to use it; this skill takes the **vendoring** path instead
 — for teams that want the rules under their version control and editable in
 place. The package is copied into the target repository, after which the

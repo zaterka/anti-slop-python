@@ -9,6 +9,10 @@ of the fix is ``field(default_factory=list)``.
 Recognized decorators: ``@dataclass``, ``@dataclasses.dataclass``, and their
 called forms (``@dataclass(frozen=True)``). Field annotations with
 ``field(...)`` defaults are correct and are not flagged.
+
+``ClassVar`` annotations are exempt: dataclasses treats them as pseudo-fields
+and never installs them as instance state, so ``registry: ClassVar[dict] = {}``
+raises nothing and is the ordinary way to declare shared class-level state.
 """
 
 from __future__ import annotations
@@ -23,10 +27,20 @@ __all__ = ["NoDataclassMutableDefaultsRule"]
 
 _DATACLASS_DECORATOR_NAMES = frozenset({"dataclass", "dataclasses.dataclass"})
 
+# ``ClassVar[...]`` marks a pseudo-field: dataclasses skips it entirely, so a
+# mutable default on one is legal and deliberate, not the shared-state bug.
+_CLASS_VAR_NAMES = frozenset({"ClassVar", "typing.ClassVar", "typing_extensions.ClassVar"})
+
 
 def _is_dataclass_decorator(decorator: ast.expr) -> bool:
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
     return dotted_name(target) in _DATACLASS_DECORATOR_NAMES
+
+
+def _is_class_var(annotation: ast.expr) -> bool:
+    """True for ``ClassVar`` and ``ClassVar[X]`` in any qualified spelling."""
+    target = annotation.value if isinstance(annotation, ast.Subscript) else annotation
+    return dotted_name(target) in _CLASS_VAR_NAMES
 
 
 class NoDataclassMutableDefaultsRule(Rule):
@@ -62,6 +76,8 @@ class NoDataclassMutableDefaultsRule(Rule):
                     and statement.value is not None
                     and is_mutable_display(statement.value)
                 ):
+                    continue
+                if _is_class_var(statement.annotation):
                     continue
                 yield self.report(
                     ctx, statement, "mutableFieldDefault", name=target.id

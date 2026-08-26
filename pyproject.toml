@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "anti-slop-python"
-version = "0.2.0"
+version = "0.3.0"
 description = "Opinionated AST rules that reject low-evidence and low-signal Python patterns."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -28,7 +28,7 @@ dependencies = []
 anti-slop = "anti_slop.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/pedro.zaterka/anti-slop-python"
+Homepage = "https://github.com/zaterka/anti-slop-python"
 
 [tool.hatch.build.targets.wheel]
 packages = ["anti_slop"]
@@ -40,23 +40,24 @@ include = ["anti_slop", "tests", "README.md", "LICENSE", "AGENTS.md"]
 testpaths = ["tests"]
 addopts = "-q"
 
-# This repository lints itself with its own ruleset. The disabled rules are
-# the ones whose very purpose conflicts with being a console linter:
-#
-# - no-runtime-isinstance: this codebase's core mechanism *is* AST node-type
-#   dispatch (isinstance against ast.* classes). The rule targets narrowing
-#   untyped runtime values, which never occurs here: every ast node is a
-#   concrete, statically known class.
-#
-# - no-debug-prints: this project *is* a console tool; its output channel is
-#   stdout via print, in cli.py and the installer script.
+# This repository lints itself with its own ruleset.
 #
 # (no-shape-in-symbol-names and no-numbered-symbol-names need no entry: they
 # are opt-in rules, disabled by default for every project.)
 [tool.anti-slop]
+# Deliberately sloppy sample code, kept so CI can assert the action annotates
+# real findings. Linting it would be linting the test data.
+ignore = ["tests/fixtures/**"]
 
+# This codebase's core mechanism *is* AST node-type dispatch (isinstance
+# against ast.* classes). The rule targets narrowing untyped runtime values,
+# which never occurs here: every ast node is a concrete, statically known
+# class. Off for the implementation; still enforced on the tests.
 [tool.anti-slop.rules."anti-slop/no-runtime-isinstance"]
-enabled = false
+exclude = ["anti_slop/**"]
 
+# This project *is* a console tool: stdout via print is its output channel,
+# not a debug artifact. Scoped to the two files that own that channel rather
+# than switched off everywhere.
 [tool.anti-slop.rules."anti-slop/no-debug-prints"]
-enabled = false
+exclude = ["anti_slop/cli.py", "skills/install-anti-slop/scripts/install.py"]

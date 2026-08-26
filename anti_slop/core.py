@@ -12,7 +12,11 @@ import ast
 from dataclasses import dataclass
 from typing import Iterator
 
-__all__ = ["FileContext", "Violation", "Rule"]
+__all__ = ["FileContext", "Violation", "Rule", "RuleOption"]
+
+# Every bundled rule option is a flag or a list of names (e.g. the extra
+# logger receiver names of ``no-fstring-logging``).
+type RuleOption = bool | list[str]
 
 
 @dataclass
@@ -26,7 +30,7 @@ class FileContext:
     path: str
     source: str
     tree: ast.Module
-    options: dict[str, bool]  # every bundled rule option is boolean
+    options: dict[str, RuleOption]
 
 
 @dataclass
@@ -64,7 +68,7 @@ class Rule:
     name: str = ""
     description: str = ""
     messages: dict[str, str] = {}
-    default_options: dict[str, bool] = {}  # widen if a non-boolean option is added
+    default_options: dict[str, RuleOption] = {}
     # Opt-in rules (``default_enabled = False``) are inactive unless the
     # project configuration explicitly enables them.
     default_enabled: bool = True

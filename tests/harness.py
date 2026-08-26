@@ -15,13 +15,18 @@ Each rule's test file looks like::
 ``valid`` entries are code strings that must produce zero violations.
 ``invalid`` entries are either code strings (at least one violation expected)
 or dicts ``{"code": ..., "count": N}`` pinning the exact violation count.
+
+Pass ``options=`` to exercise a rule's configuration; it is layered over the
+rule's ``default_options``::
+
+    RuleTester(NoRuntimeIsinstanceRule(), options={"allow_in_type_guards": True})
 """
 
 from __future__ import annotations
 
 import ast
 
-from anti_slop.core import FileContext, Rule
+from anti_slop.core import FileContext, Rule, RuleOption
 
 
 class RuleError(AssertionError):
@@ -35,8 +40,11 @@ def _render(violations: list) -> str:
 class RuleTester:
     """Run one rule's valid/invalid cases against the current interpreter's AST."""
 
-    def __init__(self, rule: Rule):
+    def __init__(self, rule: Rule, options: dict[str, RuleOption] | None = None):
         self.rule = rule
+        self.options = dict(rule.default_options)
+        if options is not None:
+            self.options.update(options)
 
     def lint(self, code: str) -> list:
         tree = ast.parse(code)
@@ -44,7 +52,7 @@ class RuleTester:
             path="<rule-test>",
             source=code,
             tree=tree,
-            options=dict(self.rule.default_options),
+            options=dict(self.options),
         )
         return list(self.rule.check(ctx))
 
@@ -63,6 +71,9 @@ class RuleTester:
                 )
 
         for index, case in enumerate(invalid):
+            # anti-slop: ignore[no-runtime-isinstance] the two spellings of a
+            # test case are this harness's own documented input format, not a
+            # value arriving from an I/O boundary.
             if isinstance(case, str):
                 code, expected_count = case, None
             else:

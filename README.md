@@ -18,7 +18,7 @@ pointless async, blocking sleeps in async code, and friends). See
 The normal way to use anti-slop is as an installed package:
 
 ```bash
-pip install "git+https://github.com/pedro.zaterka/anti-slop-python.git"
+pip install "git+https://github.com/zaterka/anti-slop-python.git"
 ```
 
 (from a local checkout, `pip install .` does the same.) The package installs
@@ -26,9 +26,72 @@ the `anti-slop` console script and the `anti_slop` module — and, once
 published, the same commands work with `pip install anti-slop-python`:
 
 ```bash
-anti-slop .              # lint the current directory
-anti-slop src/ tests/    # lint specific paths
-anti-slop --json . > findings.json
+anti-slop .                          # lint the current directory
+anti-slop src/ tests/                # lint specific paths
+anti-slop --format json . > findings.json
+anti-slop --select no-eval-exec .    # run one rule
+anti-slop --ignore-rule no-debug-prints .
+```
+
+Exit codes: `0` clean, `1` findings, `2` the run itself failed — bad usage, an
+unreadable configuration file, or a source file that could not be parsed. The
+last one matters in CI: a file the linter could not read is not a file that
+passed.
+
+## Use it on pull requests
+
+The bundled action lints changed code and annotates each finding inline on the
+diff:
+
+```yaml
+# .github/workflows/anti-slop.yml
+name: anti-slop
+on: pull_request
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: zaterka/anti-slop-python@v1
+        with:
+          paths: src tests
+```
+
+It reads `[tool.anti-slop]` from your `pyproject.toml` like the CLI does, so
+the workflow above is usually the whole configuration.
+
+To adopt it on an existing codebase without blocking merges on day one, start
+advisory and tighten later:
+
+```yaml
+      - uses: zaterka/anti-slop-python@v1
+        with:
+          paths: src
+          fail-on-findings: "false"   # annotate the diff, do not fail the job
+```
+
+A file that could not be read or parsed fails the job even when
+`fail-on-findings` is `false`; that is a broken run, not an opinion.
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `paths` | `.` | Files or directories to lint, space separated. |
+| `config` | *(search upward)* | Explicit `pyproject.toml` / `anti-slop.toml`. |
+| `select` | — | Run only these rules (space or comma separated). |
+| `ignore-rule` | — | Disable these rules for the run. |
+| `fail-on-findings` | `true` | Set to `"false"` to annotate without failing. |
+| `python-version` | `3.12` | Python used to run the linter. |
+
+Outputs: `findings` (count) and `exit-code` (`0`/`1`/`2`), so a later step can
+branch on the result.
+
+Not using GitHub Actions? Any CI runs the CLI directly — the exit codes above
+are the contract:
+
+```bash
+pip install "git+https://github.com/zaterka/anti-slop-python.git"
+anti-slop src tests
 ```
 
 ## Or vendor the rules
@@ -41,7 +104,7 @@ it when you want the rules under your version control, editable in place.
 ### With an agent skill
 
 ```bash
-npx skills add pedro.zaterka/anti-slop-python --skill install-anti-slop
+npx skills add zaterka/anti-slop-python --skill install-anti-slop
 ```
 
 Then ask your coding agent to install or configure anti-slop in the current
@@ -52,7 +115,7 @@ result.
 To inspect available skills first:
 
 ```bash
-npx skills add pedro.zaterka/anti-slop-python --list
+npx skills add zaterka/anti-slop-python --list
 ```
 
 ### Manually
@@ -84,6 +147,10 @@ enabled = false
 [tool.anti-slop.rules."anti-slop/no-numbered-symbol-names"]
 enabled = true
 
+# Keep a rule, but not everywhere:
+[tool.anti-slop.rules."anti-slop/no-debug-prints"]
+exclude = ["src/cli.py", "scripts/**"]
+
 # Pass per-rule options (example: allow isinstance inside TypeGuard functions):
 [tool.anti-slop.rules."anti-slop/no-runtime-isinstance"]
 allow_in_type_guards = true
@@ -93,9 +160,36 @@ A standalone `anti-slop.toml` / `.anti-slop.toml` file is also supported.
 `--config FILE` points at an explicit file; otherwise the nearest
 `pyproject.toml` with `[tool.anti-slop]` is used.
 
-`ignore` patterns are matched (via `fnmatch`) against each file's path
-relative to the walked directory. Caches and VCS directories
-(`__pycache__`, `.venv`, `.git`, ...) are always skipped.
+`ignore` and per-rule `exclude` patterns are matched (via `fnmatch`) against
+each file's path relative to **the configuration file's own directory**, so a
+pattern means the same thing whether you run `anti-slop .` or `anti-slop src/`.
+Caches and VCS directories (`__pycache__`, `.venv`, `.git`, ...) are always
+skipped. A file named explicitly on the command line is always linted.
+
+Prefer `exclude` over `enabled = false`: a rule scoped off the two files that
+fight it keeps working everywhere else.
+
+### Suppressing a single finding
+
+An opinionated rule needs an escape hatch cheaper than switching it off. A
+comment marks one line, or one file, as a deliberate exception:
+
+```python
+value = eval(expr)  # anti-slop: ignore[no-eval-exec] expr is a vetted literal
+
+# anti-slop: ignore[no-any-parameters] the decoder at the seam above already
+# validated this payload.
+def handle(payload: Any) -> None: ...
+
+# anti-slop: ignore-file[no-debug-prints]
+```
+
+Rule names may be bare (`no-eval-exec`) or qualified
+(`anti-slop/no-eval-exec`), and several may be listed at once. Omitting the
+brackets — `# anti-slop: ignore` — suppresses every rule on that line, which is
+blunt; naming the rule documents the decision. A comment on its own line
+applies to the statement below it, so the reason can run to several lines.
+`ignore-file` applies to the whole file wherever it appears.
 
 ## Rules
 
@@ -104,7 +198,7 @@ below). List them all with `anti-slop --list-rules`.
 
 ### Ported from the JS/TS original
 
-- `no-any-parameters` — rejects explicit `Any` function inputs.
+- `no-any-parameters` — rejects explicit `Any` function inputs. `*args: Any` / `**kwargs: Any` are exempt (nothing narrower is expressible for a pass-through signature); set `allow_varargs = false` to police them too. The implementation of an `@overload` set is exempt.
 - `no-any-returns` — rejects function contracts that return `Any`, `list[Any]`, `Awaitable[Any]`, or a union containing `Any`.
 - `no-any-aliases` — rejects aliases that merely conceal `Any`.
 - `no-object-parameters` — rejects the broad `object` type on function inputs (comparison/containment dunders exempt: `__eq__(self, other: object)` is the documented convention).
@@ -125,16 +219,16 @@ below). List them all with `anti-slop --list-rules`.
 These rules have no JS/TS counterpart; they target the giveaways that models
 leave behind in Python specifically (see [References](#references)):
 
-- `no-swallowed-exceptions` — rejects broad `except` handlers whose body is only `pass`/`continue`; the failure must be handled, logged, or re-raised.
+- `no-swallowed-exceptions` — rejects broad `except` handlers whose body does nothing with the failure (`pass`, `continue`, `...`, or a lone string); it must be handled, logged, or re-raised.
 - `no-debug-prints` — rejects `print` outside the `if __name__ == "__main__":` guard; output belongs in a logger or the program's output channel.
-- `no-fstring-logging` — rejects f-strings as logging message arguments; pass the format string and values separately so formatting stays lazy.
+- `no-fstring-logging` — rejects f-strings as logging message arguments; pass the format string and values separately so formatting stays lazy. The receiver must look like a logger, so `parser.error(f"...")` is not flagged; extend the list with `receivers = [...]`.
 - `no-mutable-defaults` — rejects mutable literal parameter defaults (`def f(items=[])`); they are shared across calls.
 - `no-eval-exec` — rejects `eval`/`exec`; parse dynamic input into typed values instead of executing it.
 - `no-utcnow` — rejects `datetime.utcnow()` (deprecated in 3.12, naive); use `datetime.now(timezone.utc)`.
-- `no-trivial-asserts` — rejects assertions that can never fail (`assert True`, `assert x is x`, `self.assertEqual(a, a)`); they look like coverage but check nothing.
-- `no-async-without-await` — rejects `async def` functions that never await; make them synchronous (async generators exempt).
+- `no-trivial-asserts` — rejects assertions that can never fail (`assert True`, `assert x is x`, `self.assertEqual(a, a)`, and the always-truthy `assert (cond, "msg")` typo); they look like coverage but check nothing.
+- `no-async-without-await` — rejects `async def` functions that do no async work; make them synchronous. Async generators, `async with`, `async for`, and async comprehensions all count as async work and are exempt.
 - `no-blocking-sleep-in-async` — rejects `time.sleep` inside async functions; it blocks the event loop.
-- `no-dataclass-mutable-defaults` — rejects mutable defaults on dataclass fields (a runtime `ValueError`); use `field(default_factory=...)`.
+- `no-dataclass-mutable-defaults` — rejects mutable defaults on dataclass fields (a runtime `ValueError`); use `field(default_factory=...)`. `ClassVar` pseudo-fields are exempt — dataclasses skips them, so a mutable default there is legal and deliberate.
 - `no-numbered-symbol-names` — **opt-in** — rejects throwaway identifiers (`data2`, `result_final`); name symbols for their domain role.
 
 The original plugin's optional Effect rule group has no Python counterpart
@@ -313,6 +407,16 @@ try:
     process(row)
 except Exception:
     pass
+
+try:
+    process(row)
+except Exception:
+    ...  # the stub spelling of pass; swallows identically
+
+try:
+    process(row)
+except Exception:
+    "best effort"  # reads as a comment, runs as a no-op
 ```
 
 ### `no-debug-prints`
@@ -327,6 +431,12 @@ def submit(order: Order) -> None:
 ```python
 logger.info(f"job {job_id} failed")
 # → logger.info("job %s failed", job_id)
+```
+
+Exempt — the receiver is not a logger, and eager formatting is correct:
+
+```python
+parser.error(f"bad value: {value}")
 ```
 
 ### `no-mutable-defaults`
@@ -354,6 +464,11 @@ now = datetime.utcnow()
 ```python
 def test_roundtrip(self):
     self.assertEqual(result, result)  # checks nothing
+
+
+def test_range(self):
+    assert (0 <= score <= 100, "score out of range")  # always-truthy tuple
+    # → assert 0 <= score <= 100, "score out of range"
 ```
 
 ### `no-async-without-await`
@@ -361,6 +476,14 @@ def test_roundtrip(self):
 ```python
 async def load_cache() -> Mapping:
     return self._cache  # never awaits; make it a plain function
+```
+
+Exempt — `async with` and `async for` are async work even with no `await`:
+
+```python
+async def fetch(session: ClientSession) -> Response:
+    async with session.get(url) as response:
+        return response
 ```
 
 ### `no-blocking-sleep-in-async`
@@ -380,6 +503,14 @@ class Batch:
     # → items: list = field(default_factory=list)
 ```
 
+Exempt — `ClassVar` is a pseudo-field that dataclasses skips entirely:
+
+```python
+@dataclass
+class Batch:
+    registry: ClassVar[dict[str, Handler]] = {}
+```
+
 ### `no-numbered-symbol-names` (opt-in)
 
 ```python
@@ -395,12 +526,21 @@ This repository lints itself with its own ruleset:
 .venv/bin/python -m anti_slop anti_slop tests skills
 ```
 
-Two rules are disabled for this repo in `pyproject.toml`, each with a
-documented justification: `no-runtime-isinstance` (this codebase's core
-mechanism *is* `isinstance` dispatch over concrete `ast.*` node classes) and
-`no-debug-prints` (this project *is* a console tool; its output channel is
-stdout via `print`). The opt-in rules need no entry — they are off by default
-everywhere.
+CI runs exactly that, through the action in this repository, so the tool has to
+pass its own checks on every pull request.
+
+No rule is switched off wholesale. Two are *scoped* in `pyproject.toml`, each
+with a documented justification:
+
+- `no-runtime-isinstance` — `exclude = ["anti_slop/**"]`. This codebase's core
+  mechanism *is* `isinstance` dispatch over concrete `ast.*` node classes. Still
+  enforced on the tests.
+- `no-debug-prints` — excluded for `cli.py` and the installer script only. This
+  project *is* a console tool; stdout is its output channel, in those two files
+  and nowhere else.
+
+One finding is suppressed inline, in `tests/harness.py`, with its reason in the
+comment. The opt-in rules need no entry — they are off by default everywhere.
 
 ## Development
 
@@ -413,6 +553,12 @@ uv pip install --python .venv/bin/python pytest
 `anti_slop/` is canonical. Tests mirror the rules: `tests/test_<rule>.py`
 exercises `anti_slop/rules/<rule>.py` through the `RuleTester` harness in
 `tests/harness.py`. Add focused RuleTester coverage for semantic rule changes.
+Pass `options={...}` to `RuleTester` to exercise a rule's configuration.
+
+The parts of a run that belong to no single rule have their own tests:
+`test_engine.py` (file discovery, ignore matching, per-rule scoping, contained
+rule crashes), `test_cli.py` (exit codes and output formats), and
+`test_suppressions.py`.
 
 ## References
 

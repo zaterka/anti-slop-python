@@ -16,6 +16,20 @@ def test_no_async_without_await() -> None:
             "async def f():\n    return [await fetch(x) for x in xs]",
             # Async generator: no await, but it yields to the loop.
             "async def f():\n    for x in stream:\n        yield x",
+            # `async with` / `async for` are async work with no Await node.
+            "async def f(session):\n"
+            "    async with session.get(url) as resp:\n"
+            "        return resp",
+            "async def f(stream):\n"
+            "    out = []\n"
+            "    async for chunk in stream:\n"
+            "        out.append(chunk)\n"
+            "    return out",
+            "async def f():\n"
+            "    async with TaskGroup() as tg:\n"
+            "        tg.create_task(work())",
+            # Async comprehension: suspends without an Await node either.
+            "async def f(stream):\n    return [x async for x in stream]",
             # Synchronous functions are out of scope.
             "def f():\n    return 1",
         ],

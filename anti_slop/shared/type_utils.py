@@ -263,12 +263,25 @@ def _is_type_alias_annotation(node: ast.AST) -> bool:
     return dotted_name(node) in {"TypeAlias", "typing.TypeAlias"}
 
 
+# Calls that *construct* a type. Any other call is a value expression:
+# ``SETTINGS = load_settings()`` is not a type alias.
+_TYPE_CONSTRUCTOR_NAMES = {
+    "TypeVar",
+    "ParamSpec",
+    "TypeVarTuple",
+    "NewType",
+    "NamedTuple",
+    "TypedDict",
+}
+
+
 def _looks_like_type(node: ast.AST) -> bool:
     """Heuristic: does this expression read as a type, not a value?"""
-    if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript, ast.BinOp, ast.Call)):
+    if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript, ast.BinOp)):
         return True
-    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Invert):
-        return False
+    if isinstance(node, ast.Call):
+        name = dotted_name(node.func)
+        return name is not None and name.split(".")[-1] in _TYPE_CONSTRUCTOR_NAMES
     return False
 
 

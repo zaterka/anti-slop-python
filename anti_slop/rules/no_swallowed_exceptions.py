@@ -1,8 +1,10 @@
 """``no-swallowed-exceptions``: ban handlers that swallow the exception.
 
 Python-specific rule (no JS/TS counterpart). An ``except`` handler whose body
-does nothing with the failure (``pass`` or ``continue``) converts every error
-into silence; the program carries on believing nothing happened. The failure
+does nothing with the failure converts every error into silence; the program
+carries on believing nothing happened. "Does nothing" covers ``pass``,
+``continue``, a bare ``...`` (the stub spelling of ``pass``), and a body that
+is only a string literal — a "comment" that costs a handler. The failure
 was either expected (then say so) or it is a bug you will never find. Handle
 the failure, log it with context, or re-raise.
 
@@ -36,8 +38,9 @@ class NoSwallowedExceptionsRule(Rule):
 
     name = "anti-slop/no-swallowed-exceptions"
     description = (
-        "Disallow broad except handlers that swallow the exception with pass "
-        "or continue; handle the failure, log it with context, or re-raise."
+        "Disallow broad except handlers that swallow the exception with pass, "
+        "continue, `...`, or a bare string; handle the failure, log it with "
+        "context, or re-raise."
     )
     messages = {
         "swallowed": (
@@ -71,5 +74,18 @@ class NoSwallowedExceptionsRule(Rule):
     @staticmethod
     def _does_nothing(body: list[ast.stmt]) -> bool:
         return bool(body) and all(
-            isinstance(stmt, (ast.Pass, ast.Continue)) for stmt in body
+            NoSwallowedExceptionsRule._is_inert(stmt) for stmt in body
         )
+
+    @staticmethod
+    def _is_inert(stmt: ast.stmt) -> bool:
+        """True for a statement that does nothing with the caught exception.
+
+        ``pass`` and ``continue``, plus the two shapes that read as prose but
+        run as ``pass``: a bare ``...`` and a lone string literal.
+        """
+        if isinstance(stmt, (ast.Pass, ast.Continue)):
+            return True
+        if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
+            return stmt.value.value is Ellipsis or isinstance(stmt.value.value, str)
+        return False

@@ -5,6 +5,15 @@ domain type; ``Any`` inputs mean the function accepts unparsed data. (The JS
 rule's ``cause`` exemption is not ported: Python exception chaining is
 ``raise X from e``, not a ``cause`` parameter, so there is no convention to
 honor — an ``Any``-typed ``cause`` is just unparsed data in disguise.)
+
+``*args: Any`` and ``**kwargs: Any`` are exempt by default. Nothing narrower
+is expressible for a pass-through signature short of ``Unpack[TypedDict]``,
+typeshed annotates them this way throughout, and ``**kwargs: Any`` is required
+boilerplate on ``__init_subclass__``. Projects that want them policed anyway
+set::
+
+    [tool.anti-slop.rules."anti-slop/no-any-parameters"]
+    allow_varargs = false
 """
 
 from __future__ import annotations
@@ -13,6 +22,7 @@ import ast
 
 from anti_slop.core import FileContext, Rule
 
+from ..shared.overloads import overload_implementations
 from ..shared.parents import build_parent_map, enclosing_type_params
 from ..shared.type_utils import (
     BUILTIN_ANY_NAMES,
@@ -40,18 +50,23 @@ class NoAnyParametersRule(Rule):
             "calling this function."
         ),
     }
+    default_options = {"allow_varargs": True}
 
     def check(self, ctx: FileContext):
         tree = ctx.tree
         imports = import_map(tree)
         assigned = assigned_names(tree)
         parents = build_parent_map(tree)
+        allow_varargs = bool(ctx.options.get("allow_varargs", True))
+        overloads = overload_implementations(tree)
 
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            if node in overloads:
+                continue  # the stubs above it carry the real contract
             type_params = frozenset(enclosing_type_params(parents, node))
-            for argument in self._parameters(node):
+            for argument in self._parameters(node, skip_varargs=allow_varargs):
                 if argument.annotation is None:
                     continue
                 if self._is_direct_any(argument.annotation, imports, assigned, type_params):
@@ -83,13 +98,17 @@ class NoAnyParametersRule(Rule):
         return is_typing_symbol(name, imports)
 
     @staticmethod
-    def _parameters(node: ast.FunctionDef):
-        """All parameter nodes, including ``*args`` and ``**kwargs``."""
+    def _parameters(node: ast.FunctionDef, *, skip_varargs: bool):
+        """The parameter nodes to police.
+
+        ``*args`` / ``**kwargs`` are included only when ``skip_varargs`` is
+        false; a pass-through signature has no narrower annotation available.
+        """
         args = node.args
         yield from args.posonlyargs
         yield from args.args
-        if args.vararg is not None:
+        if args.vararg is not None and not skip_varargs:
             yield args.vararg
         yield from args.kwonlyargs
-        if args.kwarg is not None:
+        if args.kwarg is not None and not skip_varargs:
             yield args.kwarg

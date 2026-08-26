@@ -17,14 +17,18 @@ from typing import Iterator
 
 from .config import Config
 from .core import FileContext, Rule, Violation
+from .suppressions import parse_suppressions
 
 __all__ = [
     "DEFAULT_IGNORED_DIRS",
+    "ActiveRule",
     "LintResult",
     "iter_python_files",
     "lint_file",
     "lint_paths",
     "active_rules",
+    "error_count",
+    "violation_count",
 ]
 
 # Directories never worth linting, regardless of configuration.
@@ -44,6 +48,10 @@ DEFAULT_IGNORED_DIRS = frozenset(
         ".mypy_cache",
         ".pytest_cache",
         ".ruff_cache",
+        ".uv-cache",
+        ".uv_cache",
+        ".pytype",
+        ".hypothesis",
         ".eggs",
         "site-packages",
         "dist",
@@ -65,35 +73,70 @@ class LintResult:
         return not self.violations and self.error is None
 
 
-def active_rules(config: Config) -> list[tuple[Rule, dict]]:
-    """The enabled rules, each paired with its merged option dict."""
+@dataclass
+class ActiveRule:
+    """An enabled rule plus the configuration the engine applies to it."""
+
+    rule: Rule
+    options: dict
+    exclude: list[str] = field(default_factory=list)
+
+    def applies_to(self, relative_path: str) -> bool:
+        """False when the rule is scoped off this path by ``exclude``."""
+        return not any(
+            fnmatch.fnmatch(relative_path, pattern) for pattern in self.exclude
+        )
+
+
+def active_rules(config: Config) -> list[ActiveRule]:
+    """The enabled rules, each paired with its merged options and path scope."""
     # Imported here to avoid a circular import at module load time.
     from . import rules as rules_pkg
 
-    result: list[tuple[Rule, dict]] = []
+    result: list[ActiveRule] = []
     for rule in rules_pkg.ALL_RULES:
         if config.is_enabled(rule.name, rule.default_enabled):
-            result.append((rule, config.options_for(rule.name)))
+            result.append(
+                ActiveRule(
+                    rule=rule,
+                    options={**rule.default_options, **config.options_for(rule.name)},
+                    exclude=config.exclude_for(rule.name),
+                )
+            )
     return result
 
 
-def _is_ignored(path: Path, root: Path, ignore: list[str]) -> bool:
+def relative_to_anchor(path: Path, anchor: Path) -> str:
+    """``path`` as a POSIX string relative to ``anchor``, for glob matching.
+
+    A path outside the anchor keeps its own absolute form rather than growing
+    a chain of ``..`` segments no pattern would match.
+    """
     try:
-        rel = path.relative_to(root)
+        return path.resolve().relative_to(anchor).as_posix()
     except ValueError:
-        rel = path
-    if any(part in DEFAULT_IGNORED_DIRS for part in rel.parts):
+        return path.as_posix()
+
+
+def _is_ignored(path: Path, anchor: Path, ignore: list[str]) -> bool:
+    relative = relative_to_anchor(path, anchor)
+    if any(part in DEFAULT_IGNORED_DIRS for part in Path(relative).parts):
         return True
-    rel_str = rel.as_posix()
-    return any(fnmatch.fnmatch(rel_str, pattern) for pattern in ignore)
+    return any(fnmatch.fnmatch(relative, pattern) for pattern in ignore)
 
 
-def iter_python_files(paths: list[Path], ignore: list[str]) -> Iterator[Path]:
+def iter_python_files(
+    paths: list[Path], ignore: list[str], anchor: Path | None = None
+) -> Iterator[Path]:
     """Yield Python files from the given paths (files or directories).
 
     Explicitly passed files are always yielded; directory walks skip
     :data:`DEFAULT_IGNORED_DIRS` and any configured ``ignore`` patterns.
+    ``ignore`` patterns are matched relative to ``anchor`` (the configuration
+    file's directory), not to whichever path is being walked, so the same
+    pattern holds however the linter is invoked.
     """
+    base = (anchor or Path.cwd()).resolve()
     seen: set[Path] = set()
     for raw in paths:
         path = raw
@@ -106,9 +149,8 @@ def iter_python_files(paths: list[Path], ignore: list[str]) -> Iterator[Path]:
             continue
         if not path.is_dir():
             continue
-        root = path.resolve()
-        for file in sorted(root.rglob("*.py")):
-            if _is_ignored(file, root, ignore):
+        for file in sorted(path.resolve().rglob("*.py")):
+            if _is_ignored(file, base, ignore):
                 continue
             if file in seen:
                 continue
@@ -118,7 +160,8 @@ def iter_python_files(paths: list[Path], ignore: list[str]) -> Iterator[Path]:
 
 def lint_file(
     path: Path,
-    active: list[tuple[Rule, dict]],
+    active: list[ActiveRule],
+    anchor: Path | None = None,
 ) -> LintResult:
     """Lint a single file with the active rules."""
     try:
@@ -134,14 +177,25 @@ def lint_file(
     except (ValueError, RecursionError) as exc:
         return LintResult(path=path, error=f"could not parse file: {exc}")
 
+    relative = relative_to_anchor(path, (anchor or Path.cwd()).resolve())
+    suppressions = parse_suppressions(source)
+
     violations: list[Violation] = []
     errors: list[str] = []
-    for rule, options in active:
-        ctx = FileContext(path=str(path), source=source, tree=tree, options=options)
+    for entry in active:
+        if not entry.applies_to(relative):
+            continue
+        ctx = FileContext(
+            path=str(path), source=source, tree=tree, options=dict(entry.options)
+        )
         try:
-            violations.extend(rule.check(ctx))
+            found = list(entry.rule.check(ctx))
         except Exception as exc:  # a rule bug must not abort the whole run
-            errors.append(f"{rule.name} failed: {exc!r}")
+            errors.append(f"{entry.rule.name} failed: {exc!r}")
+            continue
+        violations.extend(
+            v for v in found if not suppressions.suppresses(v.rule, v.line)
+        )
 
     violations.sort(key=lambda v: (v.line, v.column, v.rule))
     error = "; ".join(errors) if errors else None
@@ -151,7 +205,21 @@ def lint_file(
 def lint_paths(paths: list[Path], config: Config) -> list[LintResult]:
     """Lint every Python file under ``paths`` per ``config``."""
     active = active_rules(config)
-    results: list[LintResult] = []
-    for path in iter_python_files(paths, config.ignore):
-        results.append(lint_file(path, active))
-    return results
+    anchor = config.anchor().resolve()
+    return [
+        lint_file(path, active, anchor)
+        for path in iter_python_files(paths, config.ignore, anchor)
+    ]
+
+
+def violation_count(results: list[LintResult]) -> int:
+    return sum(len(result.violations) for result in results)
+
+
+def error_count(results: list[LintResult]) -> int:
+    """Files that could not be read, parsed, or fully linted.
+
+    Distinct from violations: an error means the linter did not get to form an
+    opinion, which must never be reported as a clean run.
+    """
+    return sum(1 for result in results if result.error is not None)

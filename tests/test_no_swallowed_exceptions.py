@@ -34,6 +34,9 @@ def test_no_swallowed_exceptions() -> None:
             "except Exception:\n"
             "    fallback()\n"
             "    cleanup()",
+            # A specific type may still be stubbed out; only broad handlers
+            # are policed.
+            "try:\n    f()\nexcept ValueError:\n    ...",
         ],
         invalid=[
             {
@@ -52,6 +55,20 @@ def test_no_swallowed_exceptions() -> None:
                 # continue is still doing nothing with the failure.
                 "code": "for x in items:\n    try:\n        f(x)\n"
                 "    except Exception:\n        continue",
+                "count": 1,
+            },
+            {
+                # `...` is the stub spelling of pass; it swallows identically.
+                "code": "try:\n    f()\nexcept Exception:\n    ...",
+                "count": 1,
+            },
+            {
+                # A "comment" that is really a no-op statement.
+                "code": 'try:\n    f()\nexcept Exception:\n    "best effort"',
+                "count": 1,
+            },
+            {
+                "code": "try:\n    f()\nexcept Exception:\n    ...\n    pass",
                 "count": 1,
             },
             {

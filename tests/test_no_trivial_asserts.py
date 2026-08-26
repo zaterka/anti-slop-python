@@ -72,3 +72,21 @@ def test_no_trivial_asserts() -> None:
             },
         ],
     )
+
+
+def test_no_trivial_asserts_truthy_tuple() -> None:
+    RuleTester(NoTrivialAssertsRule()).run(
+        "anti-slop/no-trivial-asserts (tuple)",
+        valid=[
+            # The correct spelling: message as the assert's second operand.
+            'assert value == expected, "mismatch"',
+            # A tuple *comparison* is a real check, not a truthy tuple.
+            "assert (a, b) == (1, 2)",
+        ],
+        invalid=[
+            # Parenthesized assert: the tuple is always truthy, so the check
+            # never runs.
+            {"code": 'assert (value == expected, "mismatch")', "count": 1},
+            {"code": 'assert (result,)', "count": 1},
+        ],
+    )

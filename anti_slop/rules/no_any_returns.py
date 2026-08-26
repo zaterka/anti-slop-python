@@ -11,6 +11,7 @@ import ast
 
 from anti_slop.core import FileContext, Rule
 
+from ..shared.overloads import overload_implementations
 from ..shared.parents import build_parent_map, enclosing_type_params
 from ..shared.type_utils import (
     annotation_is_any,
@@ -46,10 +47,13 @@ class NoAnyReturnsRule(Rule):
         imports = import_map(tree)
         shadowed = shadowed_sensitive_symbols(tree)
         parents = build_parent_map(tree)
+        overloads = overload_implementations(tree)
 
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            if node in overloads:
+                continue  # the stubs above it carry the real contract
             if node.returns is None:
                 continue
             type_params = frozenset(enclosing_type_params(parents, node))

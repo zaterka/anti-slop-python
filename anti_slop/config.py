@@ -10,12 +10,17 @@ intentionally small::
     [tool.anti-slop.rules."anti-slop/no-runtime-isinstance"]
     enabled = true
     allow_in_type_guards = true
+    exclude = ["tests/**"]
 
 Rules are enabled by default; opt-in rules (``Rule.default_enabled = False``)
 are the exception and must be explicitly enabled. Configuration disables rules,
-enables opt-in rules, or sets per-rule options. Option keys other than
-``enabled`` are passed straight through to the rule in
-:attr:`FileContext.options`.
+enables opt-in rules, scopes a rule off certain paths (``exclude``), or sets
+per-rule options. Option keys other than ``enabled`` and ``exclude`` are passed
+straight through to the rule in :attr:`FileContext.options`.
+
+``ignore`` and ``exclude`` globs are relative to the configuration file's own
+directory, so a pattern means the same thing whether you run ``anti-slop .`` or
+``anti-slop src/``.
 """
 
 from __future__ import annotations
@@ -28,6 +33,10 @@ __all__ = ["Config", "find_config", "parse_config_file"]
 
 _CONFIG_KEY = "anti-slop"
 _STANDALONE_NAMES = ("anti-slop.toml", ".anti-slop.toml")
+
+# Keys in a rule's table that configure the *engine*, not the rule itself, and
+# so are not forwarded to ``FileContext.options``.
+_RESERVED_RULE_KEYS = frozenset({"enabled", "exclude"})
 
 
 @dataclass
@@ -42,6 +51,7 @@ class Config:
     ignore: list[str] = field(default_factory=list)
     rules: dict[str, dict] = field(default_factory=dict)
     source: Path | None = None
+    root: Path | None = None
 
     def is_enabled(self, rule_name: str, default: bool = True) -> bool:
         """Whether a rule is active in this configuration.
@@ -59,7 +69,32 @@ class Config:
         opts = self.rules.get(rule_name)
         if opts is None:
             return {}
-        return {k: v for k, v in opts.items() if k != "enabled"}
+        return {k: v for k, v in opts.items() if k not in _RESERVED_RULE_KEYS}
+
+    def exclude_for(self, rule_name: str) -> list[str]:
+        """Path globs on which this specific rule is off.
+
+        Lets a project keep a rule everywhere except where it fights the
+        codebase — ``no-debug-prints`` off in ``cli.py``, say — without
+        disabling it outright.
+        """
+        opts = self.rules.get(rule_name)
+        if opts is None:
+            return []
+        return [str(pattern) for pattern in opts.get("exclude", [])]
+
+    def anchor(self) -> Path:
+        """The directory ``ignore``/``exclude`` globs are relative to.
+
+        The configuration file's own directory, so a pattern means the same
+        thing no matter which path you point the linter at. Falls back to the
+        current directory when no configuration file was found.
+        """
+        if self.root is not None:
+            return self.root
+        if self.source is not None:
+            return self.source.parent
+        return Path.cwd()
 
 
 def _read_toml(path: Path) -> dict:
@@ -84,7 +119,12 @@ def parse_config_file(path: Path) -> Config:
         elif isinstance(opts, dict):
             rules[name] = dict(opts)
 
-    return Config(ignore=ignore, rules=rules, source=path)
+    return Config(
+        ignore=ignore,
+        rules=rules,
+        source=path,
+        root=path.resolve().parent,
+    )
 
 
 def find_config(start: Path | None = None) -> Config:

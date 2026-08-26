@@ -36,6 +36,20 @@ def test_no_dataclass_mutable_defaults() -> None:
             "@dataclass\n"
             "class C:\n"
             "    items: list",
+            # ClassVar is a pseudo-field: dataclasses skips it, so a mutable
+            # default raises nothing and is deliberate shared class state.
+            "from dataclasses import dataclass\n"
+            "from typing import ClassVar\n"
+            "@dataclass\n"
+            "class C:\n"
+            "    registry: ClassVar[dict[str, int]] = {}\n"
+            "    cache: ClassVar[list] = []\n"
+            "    name: str = 'x'",
+            "import typing\n"
+            "from dataclasses import dataclass\n"
+            "@dataclass\n"
+            "class C:\n"
+            "    registry: typing.ClassVar[dict] = {}",
         ],
         invalid=[
             {

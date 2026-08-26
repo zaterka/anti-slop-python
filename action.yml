@@ -1,0 +1,111 @@
+name: anti-slop
+description: >-
+  Lint Python for low-evidence and low-signal patterns, annotating findings
+  inline on the pull request diff.
+author: zaterka
+branding:
+  icon: filter
+  color: purple
+
+inputs:
+  paths:
+    description: Files or directories to lint, space separated.
+    required: false
+    default: "."
+  config:
+    description: >-
+      Path to a pyproject.toml or anti-slop.toml. Defaults to searching upward
+      from the repository root.
+    required: false
+    default: ""
+  select:
+    description: >-
+      Run only these rules, space or comma separated. Bare names
+      (no-eval-exec) and qualified names (anti-slop/no-eval-exec) both work.
+    required: false
+    default: ""
+  ignore-rule:
+    description: Disable these rules for the run, space or comma separated.
+    required: false
+    default: ""
+  fail-on-findings:
+    description: >-
+      Fail the job when the linter reports findings. Set to "false" to
+      annotate the diff without blocking the merge. Files that could not be
+      read or parsed always fail the job regardless of this setting.
+    required: false
+    default: "true"
+  python-version:
+    description: Python version used to run the linter.
+    required: false
+    default: "3.12"
+
+outputs:
+  findings:
+    description: Number of findings reported.
+    value: ${{ steps.lint.outputs.findings }}
+  exit-code:
+    description: "Linter exit code: 0 clean, 1 findings, 2 the run itself failed."
+    value: ${{ steps.lint.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # Installs the exact revision this action was pinned to, so `uses:
+    # ...@v1` and the linter that runs are always the same version.
+    - name: Install anti-slop
+      shell: bash
+      run: python -m pip install --disable-pip-version-check --quiet "${{ github.action_path }}"
+
+    - name: Run anti-slop
+      id: lint
+      shell: bash
+      env:
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_SELECT: ${{ inputs.select }}
+        INPUT_IGNORE_RULE: ${{ inputs.ignore-rule }}
+        INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
+      run: |
+        set -uo pipefail
+
+        args=(--format github)
+        [ -n "$INPUT_CONFIG" ] && args+=(--config "$INPUT_CONFIG")
+
+        # Rule lists accept commas or spaces; normalize to one flag per rule.
+        for rule in ${INPUT_SELECT//,/ }; do args+=(--select "$rule"); done
+        for rule in ${INPUT_IGNORE_RULE//,/ }; do args+=(--ignore-rule "$rule"); done
+
+        # shellcheck disable=SC2086
+        anti-slop "${args[@]}" $INPUT_PATHS | tee "$RUNNER_TEMP/anti-slop.log"
+        status=${PIPESTATUS[0]}
+
+        findings=$(grep -c '^::error ' "$RUNNER_TEMP/anti-slop.log" || true)
+        echo "findings=$findings" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$status" >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### anti-slop"
+          case "$status" in
+            0) echo "No problems found." ;;
+            1) echo "$findings finding(s) annotated on the diff." ;;
+            2) echo "Run failed: one or more files could not be read or parsed." ;;
+            *) echo "Run failed: anti-slop exited with status $status." ;;
+          esac
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        # 0 clean, 1 findings, 2 the run itself failed. Anything else means
+        # the linter never ran (missing binary, signal); every non-zero status
+        # other than an advisory finding count must fail the job, or a broken
+        # setup reports as a passing check.
+        case "$status" in
+          0) exit 0 ;;
+          1) [ "$INPUT_FAIL_ON_FINDINGS" = "false" ] && exit 0
+             exit 1 ;;
+          *) exit 1 ;;
+        esac

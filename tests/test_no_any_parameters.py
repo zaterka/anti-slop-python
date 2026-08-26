@@ -24,6 +24,23 @@ def test_no_any_parameters() -> None:
             "type Alias = Any\n"
             "def f(x: Alias) -> None:\n    pass",
             "def f(x: int) -> None:\n    pass",
+            # *args/**kwargs: nothing narrower is expressible for a
+            # pass-through signature, and typeshed annotates them this way.
+            "from typing import Any\n"
+            "def f(*args: Any) -> None:\n    pass",
+            "from typing import Any\n"
+            "def f(**kwargs: Any) -> None:\n    pass",
+            "from typing import Any\n"
+            "class C:\n"
+            "    def __init_subclass__(cls, **kw: Any) -> None:\n        pass",
+            # The implementation of an @overload set: the stubs above it carry
+            # the contract, and its own signature must cover their union.
+            "from typing import Any, overload\n"
+            "@overload\n"
+            "def parse(raw: str) -> int: ...\n"
+            "@overload\n"
+            "def parse(raw: bytes) -> int: ...\n"
+            "def parse(raw: Any) -> int:\n    return 0",
         ],
         invalid=[
             {
@@ -39,16 +56,6 @@ def test_no_any_parameters() -> None:
             {
                 "code": "from typing import Any\n"
                 "def f(a: Any, b: str) -> None:\n    pass",
-                "count": 1,
-            },
-            {
-                "code": "from typing import Any\n"
-                "def f(*args: Any) -> None:\n    pass",
-                "count": 1,
-            },
-            {
-                "code": "from typing import Any\n"
-                "def f(**kwargs: Any) -> None:\n    pass",
                 "count": 1,
             },
             {
@@ -92,6 +99,30 @@ def test_no_any_parameters() -> None:
                     "def f(cause: Any) -> None:\n    pass"
                 ),
                 "count": 1,
+            },
+        ],
+    )
+
+
+def test_no_any_parameters_varargs_when_opted_in() -> None:
+    RuleTester(NoAnyParametersRule(), options={"allow_varargs": False}).run(
+        "anti-slop/no-any-parameters (allow_varargs=False)",
+        valid=["def f(*args: str, **kwargs: int) -> None:\n    pass"],
+        invalid=[
+            {
+                "code": "from typing import Any\n"
+                "def f(*args: Any) -> None:\n    pass",
+                "count": 1,
+            },
+            {
+                "code": "from typing import Any\n"
+                "def f(**kwargs: Any) -> None:\n    pass",
+                "count": 1,
+            },
+            {
+                "code": "from typing import Any\n"
+                "def f(*args: Any, **kwargs: Any) -> None:\n    pass",
+                "count": 2,
             },
         ],
     )

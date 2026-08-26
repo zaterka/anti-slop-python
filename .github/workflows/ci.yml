@@ -20,13 +20,51 @@ jobs:
         run: python -m pip install --upgrade pip pytest
       - name: Run tests
         run: python -m pytest -q
-      - name: Smoke test the CLI
+
+      # Pins the exit-code contract CI consumers depend on. Each command is
+      # allowed to fail so its status can be compared, rather than aborting
+      # the step under `bash -e`.
+      - name: Smoke test the CLI exit codes
         run: |
           python -m anti_slop --list-rules
-          echo 'from typing import Any
-          def f(x: Any) -> None:
-              pass' > /tmp/sloppy.py
-          if python -m anti_slop /tmp/sloppy.py; then
-            echo "expected findings in the sample file"
-            exit 1
-          fi
+
+          printf 'def clean(x: str) -> None:\n    pass\n' > /tmp/clean.py
+          status=0; python -m anti_slop /tmp/clean.py || status=$?
+          test "$status" -eq 0 || { echo "expected 0 for a clean file, got $status"; exit 1; }
+
+          printf 'from typing import Any\ndef f(x: Any) -> None:\n    pass\n' > /tmp/sloppy.py
+          status=0; python -m anti_slop /tmp/sloppy.py || status=$?
+          test "$status" -eq 1 || { echo "expected 1 for findings, got $status"; exit 1; }
+
+          # A file that cannot be parsed must not report as a clean run.
+          printf 'def broken(\n' > /tmp/broken.py
+          status=0; python -m anti_slop /tmp/broken.py || status=$?
+          test "$status" -eq 2 || { echo "expected 2 for a parse failure, got $status"; exit 1; }
+
+  self-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The action lints this repository with the ruleset in this commit:
+      # the tool has to pass its own checks.
+      - uses: ./
+        with:
+          paths: anti_slop tests skills
+
+  action:
+    name: Action behavior
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Annotate without blocking
+        id: advisory
+        uses: ./
+        with:
+          paths: tests/fixtures/sloppy_sample.py
+          fail-on-findings: "false"
+
+      - name: Findings are reported and the step still passed
+        run: |
+          test "${{ steps.advisory.outputs.exit-code }}" -eq 1
+          test "${{ steps.advisory.outputs.findings }}" -gt 0
